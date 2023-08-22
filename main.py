@@ -5,40 +5,66 @@ import jwt
 import bcrypt
 
 # Mock databases (in-memory dictionaries)
-items_db = {}
-users_db = {}
-orders_db = {}
-products_db = {}
-categories_db = {}
-comments_db = {}
+resources = {
+    "items": {},
+    "users": {},
+    "orders": {},
+    "products": {},
+    "categories": {},
+    "comments": {}
+}
 
 SECRET_KEY = "your_secret_key_here"  # This should be kept secret and stored securely
 
-# Generic CRUD functions
-async def create_resource(request, db):
+# Schemas for basic validation
+schemas = {
+    "items": {"name", "description", "price"},
+    "users": {"username", "email", "password"},
+    "orders": {"user_id", "product_ids", "status"},
+    "products": {"name", "category_id", "price"},
+    "categories": {"name"},
+    "comments": {"user_id", "content", "item_id"}
+}
+
+def validate_data(data, schema):
+    """Validate data against a given schema."""
+    return set(data.keys()) == schema
+
+async def create_resource(request, resource_name):
     data = await request.json()
-    resource_id = str(len(db) + 1)
-    db[resource_id] = data
+    
+    # Validate input data
+    if not validate_data(data, schemas[resource_name]):
+        return web.Response(text="Invalid data format", status=400)
+    
+    resource_id = str(len(resources[resource_name]) + 1)
+    resources[resource_name][resource_id] = data
     return web.Response(text=json.dumps({"id": resource_id}), status=201)
 
-async def get_resource(request, db):
+async def get_resource(request, resource_name):
     resource_id = request.match_info.get('id', None)
-    if resource_id in db:
-        return web.Response(text=json.dumps(db[resource_id]))
+    if resource_id in resources[resource_name]:
+        return web.Response(text=json.dumps(resources[resource_name][resource_id]))
     return web.Response(status=404)
 
-async def update_resource(request, db):
+async def update_resource(request, resource_name):
     resource_id = request.match_info.get('id', None)
-    if resource_id not in db:
+    if resource_id not in resources[resource_name]:
         return web.Response(status=404)
+    
     data = await request.json()
-    db[resource_id] = data
-    return web.Response(text=json.dumps(db[resource_id]))
+    
+    # Validate input data
+    if not validate_data(data, schemas[resource_name]):
+        return web.Response(text="Invalid data format", status=400)
+    
+    resources[resource_name][resource_id] = data
+    return web.Response(text=json.dumps(resources[resource_name][resource_id]))
 
-async def delete_resource(request, db):
+async def delete_resource(request, resource_name):
     resource_id = request.match_info.get('id', None)
-    if resource_id in db:
-        del db[resource_id]
+    if resource_id in resources[resource_name]:
+        del resources[resource_name][resource_id]
         return web.Response(status=204)
     return web.Response(status=404)
 
@@ -49,13 +75,13 @@ async def register(request):
     password = data.get('password')
 
     # Check if user already exists
-    if username in users_db:
+    if username in resources.users:
         return web.Response(text=json.dumps({"error": "User already exists"}), status=400)
 
     # Hash the password
     hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
 
-    users_db[username] = {
+    resources.users[username] = {
         'username': username,
         'password': hashed_password.decode('utf-8')
     }
@@ -67,7 +93,7 @@ async def login(request):
     username = data.get('username')
     password = data.get('password')
 
-    user = users_db.get(username)
+    user = resources.users.get(username)
 
     if not user:
         return web.Response(text=json.dumps({"error": "Invalid credentials"}), status=401)
@@ -106,41 +132,11 @@ app = web.Application(middlewares=[jwt_middleware])
 app.router.add_post('/register', register)
 app.router.add_post('/login', login)
 
-# Items
-app.router.add_post('/items/', lambda request: create_resource(request, items_db))
-app.router.add_get('/items/{id}/', lambda request: get_resource(request, items_db))
-app.router.add_put('/items/{id}/', lambda request: update_resource(request, items_db))
-app.router.add_delete('/items/{id}/', lambda request: delete_resource(request, items_db))
-
-# Users
-app.router.add_post('/users/', lambda request: create_resource(request, users_db))
-app.router.add_get('/users/{id}/', lambda request: get_resource(request, users_db))
-app.router.add_put('/users/{id}/', lambda request: update_resource(request, users_db))
-app.router.add_delete('/users/{id}/', lambda request: delete_resource(request, users_db))
-
-# Orders
-app.router.add_post('/orders/', lambda request: create_resource(request, orders_db))
-app.router.add_get('/orders/{id}/', lambda request: get_resource(request, orders_db))
-app.router.add_put('/orders/{id}/', lambda request: update_resource(request, orders_db))
-app.router.add_delete('/orders/{id}/', lambda request: delete_resource(request, orders_db))
-
-# Products
-app.router.add_post('/products/', lambda request: create_resource(request, products_db))
-app.router.add_get('/products/{id}/', lambda request: get_resource(request, products_db))
-app.router.add_put('/products/{id}/', lambda request: update_resource(request, products_db))
-app.router.add_delete('/products/{id}/', lambda request: delete_resource(request, products_db))
-
-# Categories
-app.router.add_post('/categories/', lambda request: create_resource(request, categories_db))
-app.router.add_get('/categories/{id}/', lambda request: get_resource(request, categories_db))
-app.router.add_put('/categories/{id}/', lambda request: update_resource(request, categories_db))
-app.router.add_delete('/categories/{id}/', lambda request: delete_resource(request, categories_db))
-
-# Comments
-app.router.add_post('/comments/', lambda request: create_resource(request, comments_db))
-app.router.add_get('/comments/{id}/', lambda request: get_resource(request, comments_db))
-app.router.add_put('/comments/{id}/', lambda request: update_resource(request, comments_db))
-app.router.add_delete('/comments/{id}/', lambda request: delete_resource(request, comments_db))
+for resource_name in resources.keys():
+    app.router.add_post(f'/{resource_name}/', lambda request, resource=resource_name: create_resource(request, resource))
+    app.router.add_get(f'/{resource_name}/{{id}}/', lambda request, resource=resource_name: get_resource(request, resource))
+    app.router.add_put(f'/{resource_name}/{{id}}/', lambda request, resource=resource_name: update_resource(request, resource))
+    app.router.add_delete(f'/{resource_name}/{{id}}/', lambda request, resource=resource_name: delete_resource(request, resource))
 
 if __name__ == '__main__':
     web.run_app(app)
