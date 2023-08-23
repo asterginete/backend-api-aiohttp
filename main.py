@@ -3,15 +3,14 @@ import asyncio
 import json
 import jwt
 import bcrypt
+import aiomysql
 
-# Mock databases (in-memory dictionaries)
-resources = {
-    "items": {},
-    "users": {},
-    "orders": {},
-    "products": {},
-    "categories": {},
-    "comments": {}
+# Database configuration
+DB_CONFIG = {
+    'db': 'your_database_name',
+    'user': 'your_username',
+    'password': 'your_password',
+    'host': 'localhost'
 }
 
 SECRET_KEY = "your_secret_key_here"  # This should be kept secret and stored securely
@@ -29,6 +28,14 @@ schemas = {
 def validate_data(data, schema):
     """Validate data against a given schema."""
     return set(data.keys()) == schema
+
+async def init_db(app):
+    pool = await aiomysql.create_pool(**DB_CONFIG)
+    app['db_pool'] = pool
+
+async def close_db(app):
+    app['db_pool'].close()
+    await app['db_pool'].wait_closed()
 
 async def create_resource(request, resource_name):
     data = await request.json()
@@ -72,19 +79,21 @@ async def delete_resource(request, resource_name):
 async def register(request):
     data = await request.json()
     username = data.get('username')
+    email = data.get('email')
     password = data.get('password')
-
-    # Check if user already exists
-    if username in resources.users:
-        return web.Response(text=json.dumps({"error": "User already exists"}), status=400)
 
     # Hash the password
     hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
 
-    resources.users[username] = {
-        'username': username,
-        'password': hashed_password.decode('utf-8')
-    }
+    # Database interaction
+    async with request.app['db_pool'].acquire() as conn:
+        async with conn.cursor() as cur:
+            try:
+                insert_sql = "INSERT INTO users (username, email, password) VALUES (%s, %s, %s)"
+                await cur.execute(insert_sql, (username, email, hashed_password.decode('utf-8')))
+                await conn.commit()
+            except aiomysql.MySQLError:
+                return web.Response(text=json.dumps({"error": "User already exists or other DB error"}), status=400)
 
     return web.Response(text=json.dumps({"message": "User registered successfully"}), status=201)
 
@@ -137,6 +146,10 @@ for resource_name in resources.keys():
     app.router.add_get(f'/{resource_name}/{{id}}/', lambda request, resource=resource_name: get_resource(request, resource))
     app.router.add_put(f'/{resource_name}/{{id}}/', lambda request, resource=resource_name: update_resource(request, resource))
     app.router.add_delete(f'/{resource_name}/{{id}}/', lambda request, resource=resource_name: delete_resource(request, resource))
+
+app = web.Application(middlewares=[jwt_middleware])
+app.on_startup.append(init_db)
+app.on_cleanup.append(close_db)
 
 if __name__ == '__main__':
     web.run_app(app)
