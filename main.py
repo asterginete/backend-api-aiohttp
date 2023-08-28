@@ -1,155 +1,21 @@
 from aiohttp import web
-import asyncio
-import json
-import jwt
-import bcrypt
 import aiomysql
+import config
 
-# Database configuration
-DB_CONFIG = {
-    'db': 'your_database_name',
-    'user': 'your_username',
-    'password': 'your_password',
-    'host': 'localhost'
-}
+from app.routes import setup_routes
+from app.utils.database import init_db, close_db
 
-SECRET_KEY = "your_secret_key_here"  # This should be kept secret and stored securely
+app = web.Application()
 
-# Schemas for basic validation
-schemas = {
-    "items": {"name", "description", "price"},
-    "users": {"username", "email", "password"},
-    "orders": {"user_id", "product_ids", "status"},
-    "products": {"name", "category_id", "price"},
-    "categories": {"name"},
-    "comments": {"user_id", "content", "item_id"}
-}
+# Set up routes from the routes module
+setup_routes(app)
 
-def validate_data(data, schema):
-    """Validate data against a given schema."""
-    return set(data.keys()) == schema
+# Load configurations from config.py
+app['config'] = config
 
-async def init_db(app):
-    pool = await aiomysql.create_pool(**DB_CONFIG)
-    app['db_pool'] = pool
-
-async def close_db(app):
-    app['db_pool'].close()
-    await app['db_pool'].wait_closed()
-
-async def create_resource(request, resource_name):
-    data = await request.json()
-    
-    # Validate input data
-    if not validate_data(data, schemas[resource_name]):
-        return web.Response(text="Invalid data format", status=400)
-    
-    resource_id = str(len(resources[resource_name]) + 1)
-    resources[resource_name][resource_id] = data
-    return web.Response(text=json.dumps({"id": resource_id}), status=201)
-
-async def get_resource(request, resource_name):
-    resource_id = request.match_info.get('id', None)
-    if resource_id in resources[resource_name]:
-        return web.Response(text=json.dumps(resources[resource_name][resource_id]))
-    return web.Response(status=404)
-
-async def update_resource(request, resource_name):
-    resource_id = request.match_info.get('id', None)
-    if resource_id not in resources[resource_name]:
-        return web.Response(status=404)
-    
-    data = await request.json()
-    
-    # Validate input data
-    if not validate_data(data, schemas[resource_name]):
-        return web.Response(text="Invalid data format", status=400)
-    
-    resources[resource_name][resource_id] = data
-    return web.Response(text=json.dumps(resources[resource_name][resource_id]))
-
-async def delete_resource(request, resource_name):
-    resource_id = request.match_info.get('id', None)
-    if resource_id in resources[resource_name]:
-        del resources[resource_name][resource_id]
-        return web.Response(status=204)
-    return web.Response(status=404)
-
-# Authentication and Authorization functions
-async def register(request):
-    data = await request.json()
-    username = data.get('username')
-    email = data.get('email')
-    password = data.get('password')
-
-    # Hash the password
-    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-
-    # Database interaction
-    async with request.app['db_pool'].acquire() as conn:
-        async with conn.cursor() as cur:
-            try:
-                insert_sql = "INSERT INTO users (username, email, password) VALUES (%s, %s, %s)"
-                await cur.execute(insert_sql, (username, email, hashed_password.decode('utf-8')))
-                await conn.commit()
-            except aiomysql.MySQLError:
-                return web.Response(text=json.dumps({"error": "User already exists or other DB error"}), status=400)
-
-    return web.Response(text=json.dumps({"message": "User registered successfully"}), status=201)
-
-async def login(request):
-    data = await request.json()
-    username = data.get('username')
-    password = data.get('password')
-
-    user = resources.users.get(username)
-
-    if not user:
-        return web.Response(text=json.dumps({"error": "Invalid credentials"}), status=401)
-
-    if bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
-        # Generate JWT token
-        token = jwt.encode({'username': username}, SECRET_KEY, algorithm='HS256')
-        return web.Response(text=json.dumps({"token": token}), status=200)
-    else:
-        return web.Response(text=json.dumps({"error": "Invalid credentials"}), status=401)
-
-def jwt_middleware(app, handler):
-    async def middleware(request):
-        if request.path.startswith('/login') or request.path.startswith('/register'):
-            return await handler(request)
-
-        token = request.headers.get('Authorization')
-        if not token:
-            return web.Response(text=json.dumps({"error": "Token missing"}), status=401)
-
-        try:
-            decoded_token = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-            request.user = decoded_token.get('username')
-        except jwt.ExpiredSignatureError:
-            return web.Response(text=json.dumps({"error": "Token has expired"}), status=401)
-        except jwt.InvalidTokenError:
-            return web.Response(text=json.dumps({"error": "Invalid token"}), status=401)
-
-        return await handler(request)
-    return middleware
-
-# Routes
-app = web.Application(middlewares=[jwt_middleware])
-
-# Authentication routes
-app.router.add_post('/register', register)
-app.router.add_post('/login', login)
-
-for resource_name in resources.keys():
-    app.router.add_post(f'/{resource_name}/', lambda request, resource=resource_name: create_resource(request, resource))
-    app.router.add_get(f'/{resource_name}/{{id}}/', lambda request, resource=resource_name: get_resource(request, resource))
-    app.router.add_put(f'/{resource_name}/{{id}}/', lambda request, resource=resource_name: update_resource(request, resource))
-    app.router.add_delete(f'/{resource_name}/{{id}}/', lambda request, resource=resource_name: delete_resource(request, resource))
-
-app = web.Application(middlewares=[jwt_middleware])
+# Set up database connection on startup and cleanup on shutdown
 app.on_startup.append(init_db)
 app.on_cleanup.append(close_db)
 
 if __name__ == '__main__':
-    web.run_app(app)
+    web.run_app(app, host=config.HOST, port=config.PORT)
