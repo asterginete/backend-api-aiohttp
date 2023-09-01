@@ -1,0 +1,34 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[dev-packages]
+# Development packages go here, for example:
+pytest = "*"
+
+[packages]
+aiohttp = "*"
+aiomysql = "*"
+aiolimiter = "*"
+aiocache = "*"
+aiosmtplib = "*"
+aiohttp-multipart = "*"
+aiohttp-swagger = "*"
+bcrypt = "*"
+jwt = "*"
+Pillow = "*"
+Elasticsearch = "*"
+Authlib = "*"
+pyotp = "*"
+socket.io = "*"
+marshmallow = "*"
+Sentry = "*"
+Celery = "*"
+Stripe = "*"
+pandas = "*"
+Babel = "*"
+scikit-learn = "*"
+
+[requires]
+python_version = "3.8"
