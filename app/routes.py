@@ -1,6 +1,10 @@
-from app.views import items, users, orders, products, categories, comments
+from .views import items, users, orders, products, categories, comments, ratings
 
 def setup_routes(app):
+    # Authentication routes
+    app.router.add_post('/register', users.register)
+    app.router.add_post('/login', users.login)
+
     # Items routes
     app.router.add_post('/items/', items.create_item)
     app.router.add_get('/items/{id}/', items.get_item)
@@ -8,7 +12,6 @@ def setup_routes(app):
     app.router.add_delete('/items/{id}/', items.delete_item)
 
     # Users routes
-    app.router.add_post('/users/', users.create_user)
     app.router.add_get('/users/{id}/', users.get_user)
     app.router.add_put('/users/{id}/', users.update_user)
     app.router.add_delete('/users/{id}/', users.delete_user)
@@ -37,6 +40,8 @@ def setup_routes(app):
     app.router.add_put('/comments/{id}/', comments.update_comment)
     app.router.add_delete('/comments/{id}/', comments.delete_comment)
 
-    # Authentication routes
-    app.router.add_post('/register', users.register)
-    app.router.add_post('/login', users.login)
+    # Ratings routes
+    app.router.add_post('/ratings/', ratings.create_rating)
+    app.router.add_get('/ratings/{id}/', ratings.get_rating)
+    app.router.add_put('/ratings/{id}/', ratings.update_rating)
+    app.router.add_delete('/ratings/{id}/', ratings.delete_rating)

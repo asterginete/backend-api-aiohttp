@@ -23,7 +23,7 @@ EMAIL_CONFIG = {
     'SMTP_PORT': 587,
     'SMTP_USER': 'smtp_user',
     'SMTP_PASSWORD': 'smtp_password',
-    'FROM_EMAIL': 'noreply@domain.com'
+    'FROM_EMAIL': 'noreply@yourdomain.com'
 }
 
 # Elasticsearch Configuration
@@ -49,6 +49,17 @@ FILE_STORAGE_CONFIG = {
     # 'AWS_ACCESS_KEY': 'access_key',
     # 'AWS_SECRET_KEY': 'secret_key',
     # 'AWS_BUCKET_NAME': 'bucket_name'
+}
+
+# Celery Configuration
+CELERY_CONFIG = {
+    'BROKER_URL': 'redis://localhost:6379/1',
+    'RESULT_BACKEND': 'redis://localhost:6379/2',
+    'TASK_SERIALIZER': 'json',
+    'RESULT_SERIALIZER': 'json',
+    'ACCEPT_CONTENT': ['json'],
+    'TIMEZONE': 'UTC',
+    'ENABLE_UTC': True,
 }
 
 # Other configurations can be added as needed
